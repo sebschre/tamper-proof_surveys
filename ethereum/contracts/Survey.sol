@@ -1,69 +1,62 @@
-pragma solidity ^0.5.3;
+pragma solidity >=0.4.22 <0.6.0;
 
-contract SurveyFactory {
-    Survey[] public deployedSurveys;
-
-    function createSurvey() public {
-        Survey newSurvey = new Survey(msg.sender);
-        deployedSurveys.push(newSurvey);
-    }
-
-    function getDeployedSurveys() public view returns (Survey[] memory) {
-        return deployedSurveys;
-    }
-}
-
+/// @title Survey
 contract Survey {
-    Question[] public questions;
-    address public manager;
 
-    modifier restrictedToManager() {
-        require(msg.sender == manager, "Sender not authorized");
+    struct Respondant {
+        bool hasAnswered;  // if true, that person already answered
+        bool hasRightToAnswer;  // right to answer granted
+        uint answerIndex;      // index in the answer array
+    }
+
+    struct Answer {
+        bytes32 answerText;
+        uint answerCount; // number of accumulated answered
+    }
+
+    address public owner;
+    string public question;
+    event rightToAnswerGranted(address respondant_address);
+    mapping(address => Respondant) public respondants;
+    Answer[] public answers;
+
+    constructor(string memory _question, bytes32[] memory _answerTexts) public {
+        owner = msg.sender;
+        question = _question;
+
+        for (uint i = 0; i < _answerTexts.length; i++) {
+            answers.push(Answer({
+                answerText: _answerTexts[i],
+                answerCount: 0
+            }));
+        }
+    }
+
+    // Give `respondant` the right to answer in this survey.
+    function grantRightToAnswer(address _respondant_address) public restrictedToOwner {
+        require(
+            !respondants[_respondant_address].hasAnswered,
+            "The respondant already answered."
+        );
+        respondants[_respondant_address].hasRightToAnswer = true;
+        emit rightToAnswerGranted(_respondant_address);
+    }
+
+    function answer(uint _answerIndex) public {
+        Respondant storage sender = respondants[msg.sender];
+        require(sender.hasRightToAnswer, "Has no right to vote");
+        require(!sender.hasAnswered, "Already answered.");
+        sender.hasAnswered = true;
+        sender.answerIndex = _answerIndex;
+
+        // If `_answerIndex` is out of the range of the array,
+        // this will throw automatically and revert all
+        // changes.
+        answers[_answerIndex].answerCount += 1;
+    }
+
+    modifier restrictedToOwner() {
+        require(msg.sender == owner, "Only owner is authorized for this");
         _;
     }
-
-    constructor (address creator) public {
-        manager = creator;
-    }
-
-    function createQuestion(string memory questionText) public restrictedToManager {
-        Question newQuestion = new QuestionClosedEnded(msg.sender, questionText);
-        questions.push(newQuestion);
-    }
-
-    function getQuestionsCount() public view returns (uint) {
-        return questions.length;
-    }
-}
-
-contract Question {
-    address public survey;
-    string public questionText;
-    Reponse[] public reponses;
-
-    constructor (address creatorSurvey, string memory text) public {
-        survey = creatorSurvey;
-        questionText = text;
-    }
-
-    function answer(Reponse) external;
-}
-
-contract Reponse {
-    address public respondant;
-    function setAnswer() public;
-}
-
-contract QuestionClosedEnded is Question {
-    string answerOptions;
-
-    constructor (address creatorSurvey, string memory text) Question(creatorSurvey, text) public {}
-
-    function answer() public {
-        answerOptions = "yes";
-    }
-}
-
-contract QuestionOpenEnded is Question {
-
 }
